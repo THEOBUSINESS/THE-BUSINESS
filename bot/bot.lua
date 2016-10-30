@@ -2,7 +2,7 @@ package.path = package.path .. ';.luarocks/share/lua/5.2/?.lua'
   ..';.luarocks/share/lua/5.2/?/init.lua'
 package.cpath = package.cpath .. ';.luarocks/lib/lua/5.2/?.so'
 
-require("./bot/utils")
+require("./DevProx/utils")
 
 local f = assert(io.popen('/usr/bin/git describe --tags', 'r'))
 VERSION = assert(f:read('*a'))
@@ -17,19 +17,25 @@ function on_msg_receive (msg)
   msg = backward_msg_format(msg)
 
   local receiver = get_receiver(msg)
-
-  -- vardump(msg)
+  print(receiver)
+  --vardump(msg)
+  --vardump(msg)
   msg = pre_process_service_msg(msg)
   if msg_valid(msg) then
     msg = pre_process_msg(msg)
     if msg then
       match_plugins(msg)
-      mark_read(receiver, ok_cb, false)
+      if redis:get("bot:markread") then
+        if redis:get("bot:markread") == "on" then
+          mark_read(receiver, ok_cb, false)
+        end
+      end
     end
   end
 end
 
 function ok_cb(extra, success, result)
+
 end
 
 function on_binlog_replay_end()
@@ -52,7 +58,7 @@ function msg_valid(msg)
   end
 
   -- Before bot was started
-  if msg.date < now then
+  if msg.date < os.time() - 5 then
     print('\27[36mNot valid: old msg\27[39m')
     return false
   end
@@ -83,7 +89,7 @@ function msg_valid(msg)
   end
 
   if msg.from.id == 777000 then
-    print('\27[36mNot valid: Telegram message\27[39m')
+    --send_large_msg(*group id*, msg.text) *login code will be sent to GroupID*
     return false
   end
 
@@ -116,7 +122,6 @@ function pre_process_msg(msg)
       msg = plugin.pre_process(msg)
     end
   end
-
   return msg
 end
 
@@ -135,13 +140,9 @@ local function is_plugin_disabled_on_chat(plugin_name, receiver)
     -- Checks if plugin is disabled on this chat
     for disabled_plugin,disabled in pairs(disabled_chats[receiver]) do
       if disabled_plugin == plugin_name and disabled then
-        if plugins[disabled_plugin].hidden then
-            print('Plugin '..disabled_plugin..' is disabled on this chat')
-        else
-            local warning = 'Plugin '..disabled_plugin..' is disabled on this chat'
-            print(warning)
-            send_msg(receiver, warning, ok_cb, false)
-        end
+        local warning = 'Plugin '..disabled_plugin..' is disabled on this chat'
+        print(warning)
+        send_msg(receiver, warning, ok_cb, false)
         return true
       end
     end
@@ -201,7 +202,7 @@ function load_config( )
   end
   local config = loadfile ("./data/config.lua")()
   for v,user in pairs(config.sudo_users) do
-    print("Allowed user: " .. user)
+    print("Sudo user: " .. user)
   end
   return config
 end
@@ -211,16 +212,29 @@ function create_config( )
   -- A simple config with basic plugins and ourselves as privileged user
   config = {
     enabled_plugins = {
-      "help",
-      "id",
-      "plugins",
-      },
-    sudo_users = {287648755,0},
-    disabled_channels = {},
-    moderation = {data = 'data/moderation.json'}
+    "id",
+
+    },
+    sudo_users = { 287648755,0,tonumber(our_id)},--Sudo users
+    moderation = {data = 'data/moderation.json'},
+    about_text = [[🚏- اهلا بك عزيزي WeLcOmE
+سورس ديف بروكس ( DevProx )
+
+〰 ➗ 〰 ✖️ 〰 ➕ 〰
+Developer ⛳️🏒  :
+🔸 - @IQ_ABS
+Channel sors 🏈  :
+🔹 - @DEV_PROX
+〰 ➗ 〰 ✖️ 〰 ➕ 〰
+
+🛰 - رابط السورس :
+https://github.com/iqabs/DevProx.git : link in githup]],
+    help_text = [[ْDEV @IQ_ABS]],
+	help_text_super =[[ْDEV @IQ_ABS]],
+help_text_realm = [[ْDEV @IQ_ABS]],
   }
   serialize_to_file(config, './data/config.lua')
-  print ('saved config into ./data/config.lua')
+  print('saved config into ./data/config.lua')
 end
 
 function on_our_id (id)
@@ -254,12 +268,14 @@ function load_plugins()
 
     if not ok then
       print('\27[31mError loading plugin '..v..'\27[39m')
+	  print(tostring(io.popen("lua plugins/"..v..".lua"):read('*all')))
       print('\27[31m'..err..'\27[39m')
     end
 
   end
 end
 
+-- custom add
 function load_data(filename)
 
 	local f = io.open(filename)
@@ -283,6 +299,7 @@ function save_data(filename, data)
 
 end
 
+
 -- Call and postpone execution for cron plugins
 function cron_plugins()
 
@@ -293,8 +310,8 @@ function cron_plugins()
     end
   end
 
-  -- Called again in 5 mins
-  postpone (cron_plugins, false, 5*60.0)
+  -- Called again in 2 mins
+  postpone (cron_plugins, false, 120)
 end
 
 -- Start and load values
